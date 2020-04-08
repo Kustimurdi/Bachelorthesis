@@ -6,9 +6,9 @@ from random import *
 import math
 
 
-N = 200
+N = 100
 '''length of state'''
-time = 10
+time = 5
 W = 1.5
 '''disorder paramter'''
 
@@ -134,6 +134,12 @@ def plotDist(tupleOfListsOfValues, xlabel, ylabel):
     plt.xlabel(xlabel)
     plt.ylabel(ylabel)
 
+def plotDistEnh(plotName, tupleOfListsOfValues, xlabel, ylabel, title):
+    '''takes a tuple of lists with x and y values: "tupleOfListsOfValues'''
+    plotName.plot(tupleOfListsOfValues[0], tupleOfListsOfValues[1], "r")
+    plotName.set_xlabel(xlabel)
+    plotName.set_ylabel(ylabel)
+    plotName.set_title(title)
 
 # adding the disorder
 def calcDisorder(N, disorderParameter):  # kreiert die additionale Matrix der Störung
@@ -154,17 +160,17 @@ def calcDisorder(N, disorderParameter):  # kreiert die additionale Matrix der St
     return disMat
 
 
-def calcStandDev(probDis):
+def calcStandDev(probDist):
     '''takes the tuple of the calcProbDistMiddle method "probDis" (the probability distribution for a given time evolution of a hamiltonian matrix) \n
     returns the standard deviation of the distribution'''
-    lenthOfState = len(probDis[1])
+    lenthOfState = len(probDist[1])
     valueOne = 0
     valueTwo = 0
 
     #computes the two values in the square root of the equation for the deviation
     for i in range(lenthOfState):
-        valueOne += probDis[1][i] * (i + 1) ** 2
-        valueTwo += probDis[1][i] * (i + 1)
+        valueOne += probDist[1][i] * (i + 1) ** 2
+        valueTwo += probDist[1][i] * (i + 1)
     sigma = math.sqrt(valueOne - valueTwo ** 2)
     return sigma
 
@@ -225,6 +231,39 @@ def calcProbSumList(startTime, endTime, incrementTime, matrix):
     result.append(probSumList)
     return result
 
+def calcStandDevDisEvo(startDis, endDis, incrementDis, time, matrix):
+    '''takes a start and end value and an increment for the disorder parameter: "startDis", "endDis", "incrementDis" \n
+    takes the time of the state and the hamintonian matrix without the disorder: "time, "matrix"
+    return a tuple of the list of disorders and the list of the respecting standard deviation at time "time"'''
+    N = len(matrix) + 1
+    wList = range(startDis, endDis + 1, incrementDis)
+
+    #creates a list of hamiltonian matrices with disorder
+    matDisList = []
+    for i in wList:
+        disMat = calcDisorder(N,i) + matrixTimeEvo
+        matDisList.append(disMat)
+
+    #creates a list of the time evolutions of the hamiltonian matrices
+    matDisTimeEvoList = []
+    for i in matDisList:
+        matDisTimeEvoList.append(calcHamTimeEvo(i, time))
+
+    #creates a list of the probability distributions of the hamiltonians
+    probDistList = []
+    for i in matDisTimeEvoList:
+        probDistList.append(calcProbDistMiddle(i))
+
+    #creates a list of the standard deviations of the hamitonians
+    sigmaDisList = []
+    for i in probDistList:
+        sigmaDisList.append(calcStandDev(i))
+
+    result = []
+    result.append(wList)
+    result.append(sigmaDisList)
+    return result
+
 
 h3Mat = calcH3MatOpenBound(N)  # Hamilton matrix
 h3Exp = calcHamTimeEvo(h3Mat, time)  # matrix exponential vom Hamilton für wahrscheinlichkeitsverteilung
@@ -236,34 +275,34 @@ h3DisProbDist = calcProbDistMiddle(h3DisExp)  # wahrscheinlichkeitsverteilung f�
 
 #plot for probability distribution
 figProbDist = plt.figure()
-ax1ProbDist = figProbDist.add_subplot(2,2,1)
-plotDist(h3ProbDist,"n - m","p(x)") #plot for the
-ax2ProbDist = figProbDist.add_subplot(2,2,2)
-plotDist(h3DisProbDist,"n - m","p(x)")
-plt.show()
-
+sub1ProbDist = figProbDist.add_subplot(2,2,1)
+plotDistEnh(sub1ProbDist,h3ProbDist,"n - m","p(x)","probability distribution \n N = " + str(N))
+h3ProbDistText = ''''''
+sub2ProbDist = figProbDist.add_subplot(2,2,2)
+plotDistEnh(sub2ProbDist,h3DisProbDist,"n - m","p(x)","probability distribution \n with disorder \n N = " + str(N) + " W = " + str(W))
+#plt.show()
 
 sigmaH3 = calcStandDevList(0, 30, 1, h3Mat) #list of standard deviations for the h3 matrix
 sigmaH3Dis = calcStandDevList(0, 30, 1, h3DisMat) #list of standard deviations for the h3 matrix with the random disorder
 
 #plot for the time evolution of the standard deviation
 figSigma = plt.figure()
-ax1Sigma = fig.add_subplot(2, 2, 1)
-plotDist(sigmaH3, "time", "sigma")
-ax2Sigma = fig.add_subplot(2, 2, 2)
-plotDist(sigmaH3Dis, "time", "sigma")
-plt.show()
+sub1Sigma = figSigma.add_subplot(2, 2, 1)
+#plotDist(sigmaH3, "time", "sigma")
+plotDistEnh(sub1Sigma, sigmaH3, "time", "sigma", "time evolution \n of the standard deviation \n N = " + str(N))
+sub2Sigma = figSigma.add_subplot(2, 2, 2)
+plotDistEnh(sub2Sigma,sigmaH3Dis, "time", "sigma","time evolution \n of the standard deviation \n with disorder \n N = " + str(N) + " W = " + str(W))
+#plt.show()
 
-
-sumH3 = calcProbSumList(0, 30, 1, h3Mat)
-sumH3Dis = calcProbSumList(0, 30, 1, h3DisMat)
+sumH3 = calcProbSumList(0, 100, 1, h3Mat)
+sumH3Dis = calcProbSumList(0, 100, 1, h3DisMat)
 
 #plot of the time evolution of the sum of the probability distribution
-figsum = plt.figure()
-ax1Sum = fig.add_subplot(2, 2, 1)
-plotDist(sumH3, "time", "sum")
-ax2Sum = fig.add_subplot(2, 2, 2)
-plotDist(sumH3Dis, "time", "sum")
+figSum = plt.figure()
+sub1Sum = figSum.add_subplot(2, 2, 1)
+plotDistEnh(sub1Sum,sumH3, "time", "sum","sum of the probability distribution\n N = " + str(N))
+sub2Sum = figSum.add_subplot(2, 2, 2)
+plotDistEnh(sub2Sum,sumH3Dis, "time", "sum", "sum of the probability distribution \n with disorder \n N = " + str(N) + " W = " + str(W))
 plt.show()
 
 
@@ -272,11 +311,11 @@ k = 0
 for i in h3ProbDist[1]:
     k += i
 # print(h3ProbDist[1])
-print(k)  # summe der wahrscheinlichkeiten für h3
+#print(k)  # summe der wahrscheinlichkeiten für h3
 l = 0
 for m in h3DisProbDist[1]:
     l += m
-print(l)  # summe der wahrscheinlichkeiten für h3 mit störung
+#print(l)  # summe der wahrscheinlichkeiten für h3 mit störung
 
 # test zum überprüfen, ob die position der dipole eine rolle spielt
 dipoleR3 = calcDipole(N, 3, True)
