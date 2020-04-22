@@ -11,9 +11,9 @@ N = 300
 time = 150
 W = 0.5
 '''disorder paramter'''
-bProbDist = True
+bProbDist = False
 bStandDevTimeEvo = False
-bProbDistSum = False
+bProbDistSum = True
 bStandDevDisEvo = False
 bLocalLenDisEvo = False
 
@@ -96,10 +96,9 @@ def calcProbDist(matrix):  # erster Versuch der Wahrscheinlichkeitsverteilung. f
 
 
 # probability distribution
-def calcProbDistMiddle(hamiltonian, time):  # man könnte es auch so umschreiben, dass es den hamiltonian nimmt und selber die time evo bestimmt
-    '''takes the hamiltonian matrix and the time of the state: "hamiltonian", '"time"\n
+def calcProbDistMiddle(matrix):  # man könnte es auch so umschreiben, dass es den hamiltonian nimmt und selber die time evo bestimmt
+    '''takes the time evolution of the hamiltonian matrix: "matrix" \n
         returns a tupel of firstly the distance between an initial and a referential dipole and secondly the respecting probability distribution'''
-    matrix = calcHamTimeEvo(hamiltonian, time)
     N = len(matrix)
     halfN = math.ceil(N / 2)
 
@@ -188,7 +187,8 @@ def calcLocalLen(matrix, W):
     N = len(matrix) + 1
     disMat = calcDisorder(N, W)
     hamiltonian = matrix + disMat
-    probDis = calcProbDistMiddle(hamiltonian, N + 10000) #mal schauen ob die Länge der Simulation eine passende Größenordnung für die Zeit hat, um den zeitl. Limes darzustellen, ohne Probleme mit dem Rand der Simulation zu erzeugen (falls es noch welche gibt)
+    hamTimeEvo = calcHamTimeEvo(hamiltonian, N + 10000)
+    probDis = calcProbDistMiddle(hamTimeEvo) #mal schauen ob die Länge der Simulation eine passende Größenordnung für die Zeit hat, um den zeitl. Limes darzustellen, ohne Probleme mit dem Rand der Simulation zu erzeugen (falls es noch welche gibt)
     localLen = calcStandDev(probDis)
     return localLen
 
@@ -199,13 +199,16 @@ def calcStandDevList(startTime, endTime, incrementTime, matrix):
         returns a tuple of the time steps and the respecting standard deviations'''
     timeList = np.arange(startTime, endTime + incrementTime, incrementTime)
     sigmaList = []
+    hamTimeEvoInitial = calcHamTimeEvo(matrix, startTime)
+    hamTimeStep = calcHamTimeEvo(matrix, incrementTime)
 
-    for i in timeList:
-        #probability distributions for the matrices
-        probDist = calcProbDistMiddle(matrix, i)
-        #standard deviations for the probability distributions
+    for i in range(len(timeList)):
+        # probability distributions for the matrices
+        probDist = calcProbDistMiddle(hamTimeEvoInitial)
+        # standard deviations for the probability distributions
         sigma = calcStandDev(probDist)
         sigmaList.append(sigma)
+        hamTimeEvoInitial = np.matmul(hamTimeEvoInitial,hamTimeStep)
 
     result = []
     result.append(timeList)
@@ -221,13 +224,16 @@ def calcProbSumList(startTime, endTime, incrementTime, matrix):
         (the list of the sums should up to a point of time only contain ones, for big enough time values the boundaries of the chain should be reached and values apart from one could appear'''
     timeList = np.arange(startTime, endTime + incrementTime, incrementTime)
     probSumList = []
+    hamTimeEvoInitial = calcHamTimeEvo(matrix, startTime)
+    hamTimeStep = calcHamTimeEvo(matrix, incrementTime)
 
-    for i in timeList:
+    for i in range(len(timeList)):
         #probability distributions for the matrices
-        probDist = calcProbDistMiddle(matrix, time)
+        probDist = calcProbDistMiddle(hamTimeEvoInitial)
         #sum of the probability distributions
         probSum = sum(probDist[1])
         probSumList.append(probSum)
+        hamTimeEvoInitial = np.matmul(hamTimeEvoInitial, hamTimeStep)
 
     result = []
     result.append(timeList)
@@ -306,8 +312,8 @@ if bStandDevTimeEvo:
     plotDistEnh(sub2Sigma,h3DisSigma, "time", "sigma","time evolution \n of the standard deviation \n with disorder \n N = " + str(N) + " W = " + str(W))
 
 if bProbDistSum:
-    h3Sum = calcProbSumList(0, 300, 1, h3Mat)
-    h3DisSum = calcProbSumList(0, 300, 1, h3DisMat)
+    h3Sum = calcProbSumList(0, 70, 5, h3Mat)
+    h3DisSum = calcProbSumList(0, 70, 5, h3DisMat)
 
     #plot of the time evolution of the sum of the probability distribution
     figSum = plt.figure()
