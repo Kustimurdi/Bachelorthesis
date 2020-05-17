@@ -6,16 +6,18 @@ from random import *
 import math
 
 
-N = 300
+N = 200
 '''length of state'''
-time = 150
-W = 0.5
+time = 30
+W = 1
 '''disorder paramter'''
+
 bProbDist = False
 bStandDevTimeEvo = False
-bProbDistSum = True
+bProbDistSum = False
 bStandDevDisEvo = False
 bLocalLenDisEvo = False
+bEigStateDist = False
 
 def calcH3MatOpenBound(N):
     '''creates h3 for a given amount of positions "N"'''
@@ -48,18 +50,31 @@ def calcHamTimeEvo(matrix, time):
     matExp = expm(matExp)
     return matExp
 
+def calcEigenTimeEvo(matrix, time):
+    '''takes the hamiltonian matrix and the point of time: "matrix", "time" \n
+    returns the time evolution of the hamiltonian using their eigenvalues and -states'''
+    eigenvalues, eigenstatesMatrix = np.linalg.eigh(matrix)
+    expMatrix = np.identity(len(matrix), complex)
+    for i in range(len(eigenvalues)):
+        expMatrix[i][i] = complex(0, -1) * time * eigenvalues[i]
+    eigenstatesMatrixInv = np.linalg.inv(eigenstatesMatrix)
+    matTimeEvo = np.dot(eigenstatesMatrix, expMatrix)
+    matTimeEvo = np.dot(matTimeEvo, eigenstatesMatrixInv)
+    return matTimeEvo
+
+
 
 # creation of dipoles
 def calcDipole(N, position, column):
     '''creates a vector with the lenght "N"-1 with a one at "position", for "column" == True it is a column vector, for "column" == False it is a row vector (dipole at position "position")'''
 
     if column:
-        dipoleR = np.zeros((N - 1, 1))
+        dipoleR = np.zeros((N - 1, 1), complex)
         dipoleR[position - 1][0] = 1
         return dipoleR
 
     else:
-        dipoleL = np.zeros((1, N - 1))
+        dipoleL = np.zeros((1, N - 1), complex)
         dipoleL[0][position - 1] = 1
         return dipoleL
 
@@ -240,6 +255,7 @@ def calcProbSumList(startTime, endTime, incrementTime, matrix):
     result.append(probSumList)
     return result
 
+
 def calcStandDevDisEvo(startDis, endDis, incrementDis, matrix, time):
     '''takes a start and end value and an increment for the disorder parameter: "startDis", "endDis", "incrementDis" \n
         takes the time of the state and the hamiltonian matrix without the disorder: "time, "matrix" \n
@@ -251,8 +267,9 @@ def calcStandDevDisEvo(startDis, endDis, incrementDis, matrix, time):
     for i in wList:
         #hamiltonian matrix with disorder
         disMat = calcDisorder(N,i) + matrix
+        disMatExp = calcHamTimeEvo(disMat, time)
         #probability distribution of the hamiltonian
-        probDist = calcProbDistMiddle(disMat, time)
+        probDist = calcProbDistMiddle(disMatExp)
         #standard deviation of the hamiltonian
         sigmaDis = calcStandDev(probDist)
         sigmaDisList.append(sigmaDis)
@@ -261,6 +278,7 @@ def calcStandDevDisEvo(startDis, endDis, incrementDis, matrix, time):
     result.append(wList)
     result.append(sigmaDisList)
     return result
+
 
 def calcLocalLenDisEvo(startDis, endDis, incrementDis, matrix):
     '''takes a start and end value and an increment for the disorder parameter: "startDis", "endDis", "incrementDis" \n
@@ -279,6 +297,55 @@ def calcLocalLenDisEvo(startDis, endDis, incrementDis, matrix):
     return result
 
 
+def calcEigenstates(matrix):
+    '''takes a hamiltonian matrix: "matrix" \n
+        returns a tuple of a list of the respecting eigenvalues and a matrix with the eigenvectors as the colums in the same order \n
+        (it removes the zero eigenvalue and the eigenvector which are created by the np.linalg.eigh() function if there is one)'''
+    eigenvalues, eigenvectorMatrix = np.linalg.eigh(matrix)
+    for i in range(len(eigenvalues)):
+        if eigenvalues[i] == 0:
+            eigVecMatNew = []
+            eigValNew = np.delete(eigenvalues, i)
+            for h in range(len(eigenvectorMatrix)):
+                eigVecRow = np.delete(eigenvectorMatrix[h], i)
+                eigVecMatNew.append(eigVecRow)
+            result = []
+            result.append(eigValNew)
+            result.append(eigVecMatNew)
+            return result
+    result = []
+    result.append(eigenvalues)
+    result.append(eigenvectorMatrix)
+    return result
+
+
+def calcEigVecDist(eigenvector):
+    n = range(1, len(eigenvector) + 1)
+    distList = []
+    for i in n:
+        dipoleRI = calcDipole(len(eigenvector)+1, i, False)
+        skalProd = dipoleRI.dot(eigenvector)
+        absVal = skalProd.real ** 2 + skalProd.imag ** 2
+        distList.append(absVal)
+    result = []
+    result.append(n)
+    result.append(distList)
+    return result
+
+
+def returnEigVec(tuple, index):
+    return tuple[1][:, index - 1]
+
+
+def calcLogYValue(tuple):
+    logYValueList = []
+    for i in tuple[1]:
+        logYValueList.append(math.log(i, math.exp(1)))
+    result = []
+    result.append(tuple[0])
+    result.append(logYValueList)
+    return result
+
 
 h3Mat = calcH3MatPerBound(N)  # Hamilton matrix
 h3Exp = calcHamTimeEvo(h3Mat, time)  # matrix exponential vom Hamilton für wahrscheinlichkeitsverteilung
@@ -289,19 +356,19 @@ h3DisMat = h3Mat + disMat  # kombinierte matrix von hamiltonian und störung
 h3DisExp = calcHamTimeEvo(h3DisMat, time)  # matrixexponential von hamiltonian mit störung
 
 if bProbDist:
-    h3ProbDist = calcProbDistMiddle(h3Mat, time)  # wahrscheinlichkeitsverteilung für h3 (list von 2 listen)
-    h3DisProbDist = calcProbDistMiddle(h3DisMat, time)  # wahrscheinlichkeitsverteilung für h3 mit störung
+    h3ProbDist = calcProbDistMiddle(h3Exp)  # wahrscheinlichkeitsverteilung für h3 (list von 2 listen)
+    h3DisProbDist = calcProbDistMiddle(h3DisExp)  # wahrscheinlichkeitsverteilung für h3 mit störung
 
     #plot for probability distribution
     figProbDist = plt.figure()
     sub1ProbDist = figProbDist.add_subplot(2,2,1)
-    plotDistEnh(sub1ProbDist,h3ProbDist,"n - m","p(x)","probability distribution \n N = " + str(N))
+    plotDistEnh(sub1ProbDist,h3ProbDist,"n - m","p(x)","probability distribution \n N = " + str(N) + ", t = " + str(time))
     sub2ProbDist = figProbDist.add_subplot(2,2,2)
-    plotDistEnh(sub2ProbDist,h3DisProbDist,"n - m","p(x)","probability distribution \n with disorder \n N = " + str(N) + " W = " + str(W))
+    plotDistEnh(sub2ProbDist,h3DisProbDist,"n - m","p(x)","probability distribution \n with disorder \n N = " + str(N) + ", W = " + str(W) + ", t = " + str(time))
 
 if bStandDevTimeEvo:
-    h3Sigma = calcStandDevList(0,70, 5, h3Mat) #list of standard deviations for the h3 matrix
-    h3DisSigma = calcStandDevList(0, 70, 5, h3DisMat) #list of standard deviations for the h3 matrix with the random disorder
+    h3Sigma = calcStandDevList(0,40, 1, h3Mat) #list of standard deviations for the h3 matrix
+    h3DisSigma = calcStandDevList(0, 40, 1, h3DisMat) #list of standard deviations for the h3 matrix with the random disorder
 
     #plot for the time evolution of the standard deviation
     figSigma = plt.figure()
@@ -323,14 +390,14 @@ if bProbDistSum:
     plotDistEnh(sub2Sum,h3DisSum, "time", "sum", "sum of the probability distribution \n with disorder \n N = " + str(N) + " W = " + str(W))
 
 if bStandDevDisEvo:
-    h3SigmaDisEvo = calcStandDevDisEvo(0,0.01,0.00005,h3Mat,time)
-    h3SigmaDisEvoTime = calcStandDevDisEvo(0,0.01,0.00005,h3Mat,200)
+    h3SigmaDisEvo = calcStandDevDisEvo(0,10,0.5,h3Mat,time)
+    h3SigmaDisEvoTime = calcStandDevDisEvo(0,10,0.5,h3Mat,10)
 
     figSigmaDisEvo = plt.figure()
     sub1SigmaDisEvo = figSigmaDisEvo.add_subplot(2,2,1)
     plotDistEnh(sub1SigmaDisEvo, h3SigmaDisEvo, "W", "sigma", "disorder evolution \n of the standard deviation \n N = " + str(N) + " time = " + str(time))
     sub2SigmaDisEvo = figSigmaDisEvo.add_subplot(2, 2, 2)
-    plotDistEnh(sub2SigmaDisEvo, h3SigmaDisEvoTime, "W", "sigma", "disorder evolution \n of the standard deviation \n N = " + str(N) + " time = " + str(200))
+    plotDistEnh(sub2SigmaDisEvo, h3SigmaDisEvoTime, "W", "sigma", "disorder evolution \n of the standard deviation \n N = " + str(N) + " time = " + str(10))
 
 if bLocalLenDisEvo:
     h3LocalLenDisEvo = calcLocalLenDisEvo(0,3,0.1,h3Mat)
@@ -339,8 +406,27 @@ if bLocalLenDisEvo:
     sub1LocalLenDisEvo = figLocalLenDisEvo.add_subplot(2, 2, 1)
     plotDistEnh(sub1LocalLenDisEvo, h3LocalLenDisEvo, "W", "localization length", "disorder evolution \n of the localization length \n N = " + str(N))
 
+if bEigStateDist:
+    h3DisEigStates = calcEigenstates(h3DisMat)
+    h3DisEigVec1Dist = calcEigVecDist(h3DisEigStates[1][:, 0])
+    h3DisEigVec2Dist = calcEigVecDist(h3DisEigStates[1][:,1])
+
+    figEigStateDist = plt.figure()
+    sub1EigStateDist = figEigStateDist.add_subplot(221)
+    plotDistEnh(sub1EigStateDist, h3DisEigVec1Dist, "n", "|phi(n)|^2", "distribution of the eigenvector \n W = " + str(W) + "\n E = " + str(h3DisEigStates[0][0]))
+    sub2EigStateDist = figEigStateDist.add_subplot(222)
+    plotDistEnh(sub2EigStateDist, h3DisEigVec2Dist, "n", "|phi(n)|^2", "distribution of the eigenvector \n W = " + str(W) + "\n E = " + str(h3DisEigStates[0][1]))
+    sub3EigStateDist = figEigStateDist.add_subplot(223)
+    sub3EigStateDist.set_yscale('log')
+    plotDistEnh(sub3EigStateDist, h3DisEigVec1Dist, "n", "|phi(n)|^2", "log of the above")
+    sub4EigStateDist = figEigStateDist.add_subplot(224)
+    sub4EigStateDist.set_yscale('log')
+    plotDistEnh(sub4EigStateDist, h3DisEigVec2Dist, "n", "|phi(n)|^2", "log of the above")
 
 plt.show()
+
+#distribution of the eigenvector \n of H3 with W = " + str(W) + "\n with the eigenvalue \n E = " + str(h3DisEigStates[0][0])
+
 
 # test zum überprüfen, ob die position der dipole eine rolle spielt
 dipoleR3 = calcDipole(N, 3, True)
@@ -351,3 +437,4 @@ dipoleR2Time = h3Exp.dot(dipoleR2)
 dipoleL1 = calcDipole(N, 1, False)
 versuch1 = dipoleL2.dot(dipoleR3Time)
 versuch2 = dipoleL1.dot(dipoleR2Time)
+
