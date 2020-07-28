@@ -4,6 +4,7 @@ from scipy.linalg import expm, sinm, cosm
 import matplotlib.pyplot as plt
 from random import *
 import math
+import cmath
 
 
 N = 200
@@ -16,8 +17,9 @@ bProbDist = False
 bStandDevTimeEvo = False
 bProbDistSum = False
 bStandDevDisEvo = False
-bLocalLenDisEvo = False
+bLocalLenDisEvo = True
 bEigStateDist = False
+bVarianceDisEvo = False
 
 def calcH3MatOpenBound(N):
     '''creates h3 for a given amount of positions "N"'''
@@ -155,7 +157,7 @@ def plotDist(tupleOfListsOfValues, xlabel, ylabel):
 
 def plotDistEnh(plotName, tupleOfListsOfValues, xlabel, ylabel, title):
     '''takes a tuple of lists with x and y values: "tupleOfListsOfValues \n
-        takes three strings for the x labe, the y label and the title: "xlabel", "ylabel", "title"
+        takes three strings for the x label, the y label and the title: "xlabel", "ylabel", "title"
         returns the respecting plot'''
     plotName.plot(tupleOfListsOfValues[0], tupleOfListsOfValues[1], "r")
     plotName.set_xlabel(xlabel)
@@ -202,7 +204,7 @@ def calcLocalLen(matrix, W):
     N = len(matrix) + 1
     disMat = calcDisorder(N, W)
     hamiltonian = matrix + disMat
-    hamTimeEvo = calcHamTimeEvo(hamiltonian, N + 10000)
+    hamTimeEvo = calcHamTimeEvo(hamiltonian, 100000)
     probDis = calcProbDistMiddle(hamTimeEvo) #mal schauen ob die Länge der Simulation eine passende Größenordnung für die Zeit hat, um den zeitl. Limes darzustellen, ohne Probleme mit dem Rand der Simulation zu erzeugen (falls es noch welche gibt)
     localLen = calcStandDev(probDis)
     return localLen
@@ -284,7 +286,6 @@ def calcLocalLenDisEvo(startDis, endDis, incrementDis, matrix):
     '''takes a start and end value and an increment for the disorder parameter: "startDis", "endDis", "incrementDis" \n
         takes the hamiltonian matrix without the disorder: "matrix" \n
         return a tuple of the list of disorders and the list of the respecting localization length of the hamiltonian "matrix"'''
-    N = len(matrix) + 1
     wList = np.arange(startDis, endDis + incrementDis, incrementDis)
     localLenDisList = []
 
@@ -299,7 +300,7 @@ def calcLocalLenDisEvo(startDis, endDis, incrementDis, matrix):
 
 def calcEigenstates(matrix):
     '''takes a hamiltonian matrix: "matrix" \n
-        returns a tuple of a list of the respecting eigenvalues and a matrix with the eigenvectors as the colums in the same order \n
+        returns a tuple of a list of the respecting eigenvalues and a matrix with the eigenvectors as the columns in the same order \n
         (it removes the zero eigenvalue and the eigenvector which are created by the np.linalg.eigh() function if there is one)'''
     eigenvalues, eigenvectorMatrix = np.linalg.eigh(matrix)
     for i in range(len(eigenvalues)):
@@ -320,6 +321,8 @@ def calcEigenstates(matrix):
 
 
 def calcEigVecDist(eigenvector):
+    '''takes an eigenvector
+    returns a tuple with the positions n and the distribution of the eigenvector'''
     n = range(1, len(eigenvector) + 1)
     distList = []
     for i in n:
@@ -334,7 +337,57 @@ def calcEigVecDist(eigenvector):
 
 
 def returnEigVec(tuple, index):
+    '''takes the tuple of the lists of eigenvalues und eigenvectors and the index of the eigenvector
+        returns the respecting eigenvector'''
     return tuple[1][:, index - 1]
+
+def calcVarianceLongTime(matrix, W):
+    '''takes a hamiltonian matrix and the disorder parameter W
+        returns the long time variance'''
+    N = len(matrix)
+    disMat = calcDisorder(N + 1, W)
+    hamiltonian = matrix + disMat
+    eigenvalues, eigenstatesList = np.linalg.eigh(hamiltonian)
+    halfN = math.ceil(N / 2)
+
+
+    # creates the list of distances between the inital and referential dipole
+    if N % 2 == 0:
+        diff = list(range(-halfN + 1, halfN + 1))
+    else:
+        diff = list(range(-halfN + 1, halfN))
+
+    Var = 0
+    dipoleZeroRow = calcDipole(N + 1, halfN, False)
+    eigenstatesNormed = []
+
+    for i in range(N):
+        eigenstateColumn = np.zeros((N, 1), complex)
+        eigenstateRow =  np.zeros((1, N), complex)
+        for j in range(N):
+            eigenstateColumn[j][0] = eigenstatesList[j][i]
+            eigenstatesNormed.append(eigenstateColumn)
+
+    for n in diff:
+        eigenstateSum = 0
+        dipoleNRow = calcDipole(N + 1, n + halfN, False)
+        for l in range(N):
+            eigenstateSum += abs((dipoleZeroRow.dot(eigenstatesNormed[l]))[0][0])**2 * abs((dipoleNRow.dot(eigenstatesNormed[l]))[0][0])**2
+        Var += n**2 * eigenstateSum
+
+    return Var
+
+def calcVarianceDisEvo(startDis, endDis, incrementDis, matrix):
+    wList = np.arange(startDis, endDis + incrementDis, incrementDis)
+    varianceDisList = []
+
+    for i in wList:
+        varianceDisList.append(calcVarianceLongTime(matrix,i))
+
+    result = []
+    result.append(wList)
+    result.append(varianceDisList)
+    return result
 
 
 def calcLogYValue(tuple):
@@ -354,6 +407,11 @@ disMat = calcDisorder(N, W)  # Störungsmatrix
 
 h3DisMat = h3Mat + disMat  # kombinierte matrix von hamiltonian und störung
 h3DisExp = calcHamTimeEvo(h3DisMat, time)  # matrixexponential von hamiltonian mit störung
+
+VarDis = calcVarianceLongTime(h3DisMat, 3)
+VarH3 = calcVarianceLongTime(h3Mat, 0)
+print(VarH3)
+print(VarDis)
 
 if bProbDist:
     h3ProbDist = calcProbDistMiddle(h3Exp)  # wahrscheinlichkeitsverteilung für h3 (list von 2 listen)
@@ -400,11 +458,32 @@ if bStandDevDisEvo:
     plotDistEnh(sub2SigmaDisEvo, h3SigmaDisEvoTime, "W", "sigma", "disorder evolution \n of the standard deviation \n N = " + str(N) + " time = " + str(10))
 
 if bLocalLenDisEvo:
-    h3LocalLenDisEvo = calcLocalLenDisEvo(0,3,0.1,h3Mat)
+    h3LocalLenDisEvo = calcLocalLenDisEvo(0,100,5,h3Mat)
 
     figLocalLenDisEvo = plt.figure()
     sub1LocalLenDisEvo = figLocalLenDisEvo.add_subplot(2, 2, 1)
     plotDistEnh(sub1LocalLenDisEvo, h3LocalLenDisEvo, "W", "localization length", "disorder evolution \n of the localization length \n N = " + str(N))
+
+    h3VarianceList = []
+    h3LogList = []
+    for i in range(len(h3LocalLenDisEvo[1])):
+        varianceValue = h3LocalLenDisEvo[1][i]**2
+        h3VarianceList.append(varianceValue)
+        logValue = math.log(h3LocalLenDisEvo[1][i])
+        h3LogList.append(logValue)
+
+    h3VarianceDisEvo = []
+    h3VarianceDisEvo.append(h3LocalLenDisEvo[0])
+    h3VarianceDisEvo.append(h3VarianceList)
+    h3LogDisEvo = []
+    h3LogDisEvo.append(h3LocalLenDisEvo[0])
+    h3LogDisEvo.append(h3LogList)
+
+    sub2LocalLenDisEvo = figLocalLenDisEvo.add_subplot(2, 2, 2)
+    plotDistEnh(sub2LocalLenDisEvo, h3VarianceDisEvo, "W", "variance", "disorder evolution \n of the variance \n N = " + str(N))
+
+    sub3LocalLenDisEvo = figLocalLenDisEvo.add_subplot(2, 2, 3)
+    plotDistEnh(sub3LocalLenDisEvo, h3LogDisEvo, "W", "log(localization length", "disorder evolution \n of the natural logarithm \n of the localization length")
 
 if bEigStateDist:
     h3DisEigStates = calcEigenstates(h3DisMat)
@@ -423,6 +502,14 @@ if bEigStateDist:
     sub4EigStateDist.set_yscale('log')
     plotDistEnh(sub4EigStateDist, h3DisEigVec2Dist, "n", "|phi(n)|^2", "log of the above")
 
+if bVarianceDisEvo:
+    h3VarianceDisEvo = calcVarianceDisEvo(0, 3, 0.5, h3Mat)
+
+    figVarianceDisEvo = plt.figure()
+    sub1VarianceDisEvo = figVarianceDisEvo.add_subplot(2, 2, 1)
+    plotDistEnh(sub1VarianceDisEvo, h3VarianceDisEvo, "W", "time limes variance","disorder evolution \n of the time limes variance \n N = " + str(N))
+
+
 plt.show()
 
 #distribution of the eigenvector \n of H3 with W = " + str(W) + "\n with the eigenvalue \n E = " + str(h3DisEigStates[0][0])
@@ -437,4 +524,6 @@ dipoleR2Time = h3Exp.dot(dipoleR2)
 dipoleL1 = calcDipole(N, 1, False)
 versuch1 = dipoleL2.dot(dipoleR3Time)
 versuch2 = dipoleL1.dot(dipoleR2Time)
+
+
 
