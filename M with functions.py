@@ -2,18 +2,24 @@
 import numpy as np
 from scipy.linalg import expm, sinm, cosm
 import matplotlib.pyplot as plt
+import matplotlib as mpl
+from matplotlib import cm
 from random import *
 import math
+from scipy import optimize
+import scipy.optimize
 import cmath
 
 
-N = 200
+N = 100
 '''length of state'''
-time = 30
+time = 3000000
 W = 1
-'''disorder paramter'''
+'''disorder parameter'''
 
+bMeanDis = False
 bProbDist = False
+bProbDistTimeEvo = False
 bStandDevTimeEvo = False
 bProbDistSum = False
 bStandDevDisEvo = False
@@ -52,6 +58,7 @@ def calcHamTimeEvo(matrix, time):
     matExp = expm(matExp)
     return matExp
 
+
 def calcEigenTimeEvo(matrix, time):
     '''takes the hamiltonian matrix and the point of time: "matrix", "time" \n
     returns the time evolution of the hamiltonian using their eigenvalues and -states'''
@@ -63,7 +70,6 @@ def calcEigenTimeEvo(matrix, time):
     matTimeEvo = np.dot(eigenstatesMatrix, expMatrix)
     matTimeEvo = np.dot(matTimeEvo, eigenstatesMatrixInv)
     return matTimeEvo
-
 
 
 # creation of dipoles
@@ -115,7 +121,7 @@ def calcProbDist(matrix):  # erster Versuch der Wahrscheinlichkeitsverteilung. f
 # probability distribution
 def calcProbDistMiddle(matrix):  # man könnte es auch so umschreiben, dass es den hamiltonian nimmt und selber die time evo bestimmt
     '''takes the time evolution of the hamiltonian matrix: "matrix" \n
-        returns a tupel of firstly the distance between an initial and a referential dipole and secondly the respecting probability distribution'''
+        returns a tuple of firstly the distance between an initial and a referential dipole and secondly the respecting probability distribution'''
     N = len(matrix)
     halfN = math.ceil(N / 2)
 
@@ -148,21 +154,34 @@ def calcProbDistMiddle(matrix):  # man könnte es auch so umschreiben, dass es d
     return ergebnis
 
 
-def plotDist(tupleOfListsOfValues, xlabel, ylabel):
+def plotDist(plotName, tupleOfListsOfValues, xlabel, ylabel, title, label):
     '''takes a tuple of lists with x and y values: "tupleOfListsOfValues
         (is not used)'''
-    plt.plot(tupleOfListsOfValues[0], tupleOfListsOfValues[1], "r")
-    plt.xlabel(xlabel)
-    plt.ylabel(ylabel)
+    plotName.plot(tupleOfListsOfValues[0], tupleOfListsOfValues[1], label=label)
+    plotName.set_xlabel(xlabel)
+    plotName.set_ylabel(ylabel)
+    plotName.set_title(title)
+
 
 def plotDistEnh(plotName, tupleOfListsOfValues, xlabel, ylabel, title):
     '''takes a tuple of lists with x and y values: "tupleOfListsOfValues \n
         takes three strings for the x label, the y label and the title: "xlabel", "ylabel", "title"
         returns the respecting plot'''
-    plotName.plot(tupleOfListsOfValues[0], tupleOfListsOfValues[1], "r")
+    plotName.plot(tupleOfListsOfValues[0], tupleOfListsOfValues[1], 'o')
     plotName.set_xlabel(xlabel)
     plotName.set_ylabel(ylabel)
     plotName.set_title(title)
+
+
+def scatterDistEnh(plotName, tupleOfListsOfValues, xlabel, ylabel, title):
+    '''takes a tuple of lists with x and y values: "tupleOfListsOfValues \n
+        takes three strings for the x label, the y label and the title: "xlabel", "ylabel", "title"
+        returns the respecting plot'''
+    plotName.plot(tupleOfListsOfValues[0], tupleOfListsOfValues[1], 'o')
+    plotName.set_xlabel(xlabel)
+    plotName.set_ylabel(ylabel)
+    plotName.set_title(title)
+
 
 # adding the disorder
 def calcDisorder(N, disorderParameter):  # kreiert die additionale Matrix der Störung
@@ -210,26 +229,47 @@ def calcLocalLen(matrix, W):
     return localLen
 
 
-def calcStandDevList(startTime, endTime, incrementTime, matrix):
+def calcStandDevTimeEvo(startTime, endTime, incrementTime, h3matrix, W, numberCalc):
     '''takes a start and ending time and an increment for the time: "startTime", "endTime", "incrementTime"\n
-        takes a hamiltonian matrix: "matrix" \n
+        takes a hamiltonian matrix and the disorder parameter: "h3matrix", "W" \n
+        takes the number of calculation steps for averaging the standard deviation \n
         returns a tuple of the time steps and the respecting standard deviations'''
     timeList = np.arange(startTime, endTime + incrementTime, incrementTime)
-    sigmaList = []
+    matrix = calcDisorder(len(h3matrix) + 1, W) + h3matrix
     hamTimeEvoInitial = calcHamTimeEvo(matrix, startTime)
     hamTimeStep = calcHamTimeEvo(matrix, incrementTime)
+
+    startSigmaList = []
 
     for i in range(len(timeList)):
         # probability distributions for the matrices
         probDist = calcProbDistMiddle(hamTimeEvoInitial)
         # standard deviations for the probability distributions
         sigma = calcStandDev(probDist)
-        sigmaList.append(sigma)
+        startSigmaList.append(sigma)
         hamTimeEvoInitial = np.matmul(hamTimeEvoInitial,hamTimeStep)
+
+    sigmaSumArray = np.asarray(startSigmaList)
+
+    for j in range(numberCalc - 1):
+        matrix = calcDisorder(len(h3matrix) + 1, W) + h3matrix
+        hamTimeEvoInitial = calcHamTimeEvo(matrix, startTime)
+        hamTimeStep = calcHamTimeEvo(matrix, incrementTime)
+        sigmaList = []
+        for i in range(len(timeList)):
+            # probability distributions for the matrices
+            probDist = calcProbDistMiddle(hamTimeEvoInitial)
+            # standard deviations for the probability distributions
+            sigma = calcStandDev(probDist)
+            sigmaList.append(sigma)
+            hamTimeEvoInitial = np.matmul(hamTimeEvoInitial, hamTimeStep)
+
+        sigmaSumArray += np.asarray(sigmaList)
+    sigmaSumArray = sigmaSumArray * (1 / numberCalc)
 
     result = []
     result.append(timeList)
-    result.append(sigmaList)
+    result.append(sigmaSumArray)
     return result
 
 
@@ -258,13 +298,13 @@ def calcProbSumList(startTime, endTime, incrementTime, matrix):
     return result
 
 
-def calcStandDevDisEvo(startDis, endDis, incrementDis, matrix, time):
+def calcStandDevDisEvo(startDis, endDis, incrementDis, matrix, time, numberCalc):
     '''takes a start and end value and an increment for the disorder parameter: "startDis", "endDis", "incrementDis" \n
         takes the time of the state and the hamiltonian matrix without the disorder: "time, "matrix" \n
         return a tuple of the list of disorders and the list of the respecting standard deviation at time "time"'''
     N = len(matrix) + 1
     wList = np.arange(startDis, endDis + incrementDis, incrementDis)
-    sigmaDisList = []
+    startSigmaDisList = []
 
     for i in wList:
         #hamiltonian matrix with disorder
@@ -274,27 +314,57 @@ def calcStandDevDisEvo(startDis, endDis, incrementDis, matrix, time):
         probDist = calcProbDistMiddle(disMatExp)
         #standard deviation of the hamiltonian
         sigmaDis = calcStandDev(probDist)
-        sigmaDisList.append(sigmaDis)
+        startSigmaDisList.append(sigmaDis)
+
+    sigmaDisSumArray = np.asarray(startSigmaDisList)
+
+    for j in range(numberCalc - 1):
+        sigmaDisList = []
+        for i in wList:
+            # hamiltonian matrix with disorder
+            disMat = calcDisorder(N, i) + matrix
+            disMatExp = calcHamTimeEvo(disMat, time)
+            # probability distribution of the hamiltonian
+            probDist = calcProbDistMiddle(disMatExp)
+            # standard deviation of the hamiltonian
+            sigmaDis = calcStandDev(probDist)
+            sigmaDisList.append(sigmaDis)
+        sigmaDisSumArray += np.asarray(sigmaDisList)
+
+    sigmaDisSumArray = sigmaDisSumArray * (1 / numberCalc)
 
     result = []
     result.append(wList)
-    result.append(sigmaDisList)
+    result.append(sigmaDisSumArray)
     return result
 
 
-def calcLocalLenDisEvo(startDis, endDis, incrementDis, matrix):
+def calcLocalLenDisEvo(startDis, endDis, incrementDis, matrix, numberCalc):
     '''takes a start and end value and an increment for the disorder parameter: "startDis", "endDis", "incrementDis" \n
         takes the hamiltonian matrix without the disorder: "matrix" \n
+        takes the number of calculation steps for averaging the localization length \n
         return a tuple of the list of disorders and the list of the respecting localization length of the hamiltonian "matrix"'''
     wList = np.arange(startDis, endDis + incrementDis, incrementDis)
-    localLenDisList = []
+    startLocalLenDisList = []
 
     for i in wList:
-        localLenDisList.append(calcLocalLen(matrix,i))
+        startLocalLenDisList.append(calcLocalLen(matrix,i))
+
+    localLenSumArray = np.asarray(startLocalLenDisList)
+
+    for j in range(numberCalc - 1):
+        localLenDisList = []
+
+        for k in wList:
+            localLenDisList.append(calcLocalLen(matrix, k))
+
+        localLenSumArray += np.asarray(localLenDisList)
+
+    localLenSumArray = localLenSumArray * (1 / numberCalc)
 
     result = []
     result.append(wList)
-    result.append(localLenDisList)
+    result.append(localLenSumArray)
     return result
 
 
@@ -363,7 +433,6 @@ def calcVarianceLongTime(matrix, W):
 
     for i in range(N):
         eigenstateColumn = np.zeros((N, 1), complex)
-        eigenstateRow =  np.zeros((1, N), complex)
         for j in range(N):
             eigenstateColumn[j][0] = eigenstatesList[j][i]
             eigenstatesNormed.append(eigenstateColumn)
@@ -377,16 +446,33 @@ def calcVarianceLongTime(matrix, W):
 
     return Var
 
-def calcVarianceDisEvo(startDis, endDis, incrementDis, matrix):
-    wList = np.arange(startDis, endDis + incrementDis, incrementDis)
-    varianceDisList = []
 
+def calcVarianceDisEvo(startDis, endDis, incrementDis, matrix, numberCalc):
+    '''takes a start and end value and an increment for the disorder parameter: "startDis", "endDis", "incrementDis" \n
+        takes the hamiltonian matrix without the disorder: "matrix" \n
+        takes the number of calculation steps for averaging the variance \n
+        return a tuple of the list of disorders and the list of the respecting long time limes of the variance of the hamiltonian "matrix" using its eigenstates'''
+    wList = np.arange(startDis, endDis + incrementDis, incrementDis)
+    startVarianceList = []
     for i in wList:
-        varianceDisList.append(calcVarianceLongTime(matrix,i))
+        startVarianceList.append(calcVarianceLongTime(matrix, i))
+
+    varianceSumArray = np.asarray(startVarianceList)
+
+    for j in range(numberCalc - 1):
+        varianceDisList = []
+
+        for i in wList:
+            varianceDisList.append(calcVarianceLongTime(matrix,i))
+
+        varianceSumArray += np.asarray(varianceDisList)
+
+    varianceSumArray = varianceSumArray * (1 / numberCalc)
+
 
     result = []
     result.append(wList)
-    result.append(varianceDisList)
+    result.append(varianceSumArray)
     return result
 
 
@@ -399,6 +485,9 @@ def calcLogYValue(tuple):
     result.append(logYValueList)
     return result
 
+def powerLaw(x, a, k, c):
+    return a*np.power(x, k) + c
+
 
 h3Mat = calcH3MatPerBound(N)  # Hamilton matrix
 h3Exp = calcHamTimeEvo(h3Mat, time)  # matrix exponential vom Hamilton für wahrscheinlichkeitsverteilung
@@ -408,33 +497,63 @@ disMat = calcDisorder(N, W)  # Störungsmatrix
 h3DisMat = h3Mat + disMat  # kombinierte matrix von hamiltonian und störung
 h3DisExp = calcHamTimeEvo(h3DisMat, time)  # matrixexponential von hamiltonian mit störung
 
-VarDis = calcVarianceLongTime(h3DisMat, 3)
-VarH3 = calcVarianceLongTime(h3Mat, 0)
-print(VarH3)
-print(VarDis)
+#VarDis = calcVarianceLongTime(h3DisMat, 3) #Varianz über Eigenzustände von der disorder matrx
+#VarH3 = calcVarianceLongTime(h3Mat, 0) #Varianz über Eigenzustände von h3
 
 if bProbDist:
     h3ProbDist = calcProbDistMiddle(h3Exp)  # wahrscheinlichkeitsverteilung für h3 (list von 2 listen)
     h3DisProbDist = calcProbDistMiddle(h3DisExp)  # wahrscheinlichkeitsverteilung für h3 mit störung
 
     #plot for probability distribution
-    figProbDist = plt.figure()
-    sub1ProbDist = figProbDist.add_subplot(2,2,1)
-    plotDistEnh(sub1ProbDist,h3ProbDist,"n - m","p(x)","probability distribution \n N = " + str(N) + ", t = " + str(time))
-    sub2ProbDist = figProbDist.add_subplot(2,2,2)
-    plotDistEnh(sub2ProbDist,h3DisProbDist,"n - m","p(x)","probability distribution \n with disorder \n N = " + str(N) + ", W = " + str(W) + ", t = " + str(time))
+    figProbDistClean = plt.figure(figsize=(12,6))
+    subProbDistClean = figProbDistClean.add_subplot(2,2,1)
+    plotDistEnh(subProbDistClean,h3ProbDist,"n - m","p(x)","probability distribution \n N = " + str(N) + ", t = " + str(time))
+    #plt.savefig('probabilityDistribution.png', bbox_inches='tight', dpi=150)
+    figProbDistDis = plt.figure()
+    subProbDistDis = figProbDistDis.add_subplot(2,2,1)
+    plotDistEnh(subProbDistDis,h3DisProbDist,"n - m","p(x)","probability distribution \n with disorder \n N = " + str(N) + ", W = " + str(W) + ", t = " + str(time))
+
+
+if bProbDistTimeEvo:
+    tPeriod = 5
+    tIncrement = 0.1
+    tList = np.arange(0, tPeriod + 1, tIncrement)
+    startMat = calcHamTimeEvo(h3DisMat, 0)
+    timeMat = calcHamTimeEvo(h3DisMat, tIncrement)
+    zList = []
+    for i in tList:
+        probDist = calcProbDistMiddle(startMat)
+        zList.append(probDist[1])
+        startMat = np.matmul(startMat, timeMat)
+        xValues = probDist[0]
+    z = np.asarray(zList)
+    x, y = np.meshgrid(xValues, tList)
+    fig = plt.figure()
+    plt.contourf(x, y, z)
+    plt.xlabel('n - m')
+    plt.ylabel('time')
+    plt.title('colour plot of \n the probability distribution \n throughout time for W = ' + str(W))
+    plt.colorbar()
+    plt.show()
+
 
 if bStandDevTimeEvo:
-    h3Sigma = calcStandDevList(0,40, 1, h3Mat) #list of standard deviations for the h3 matrix
-    h3DisSigma = calcStandDevList(0, 40, 1, h3DisMat) #list of standard deviations for the h3 matrix with the random disorder
+    h3Sigma = calcStandDevTimeEvo(0,40, 1, h3Mat, 0, 1) #list of standard deviations for the h3 matrix
+    h3DisSigmaW2 = calcStandDevTimeEvo(0, 40, 1, h3Mat, 2, 10) #list of standard deviations for the h3 matrix with the random disorder
+    h3DisSigmaW1 = calcStandDevTimeEvo(0, 40, 1, h3Mat, 1, 10)
 
     #plot for the time evolution of the standard deviation
     figSigma = plt.figure()
     sub1Sigma = figSigma.add_subplot(2, 2, 1)
     #plotDist(sigmaH3, "time", "sigma")
-    plotDistEnh(sub1Sigma, h3Sigma, "time", "sigma", "time evolution \n of the standard deviation \n N = " + str(N))
-    sub2Sigma = figSigma.add_subplot(2, 2, 2)
-    plotDistEnh(sub2Sigma,h3DisSigma, "time", "sigma","time evolution \n of the standard deviation \n with disorder \n N = " + str(N) + " W = " + str(W))
+    #plotDistEnh(sub1Sigma, h3Sigma, "time", "sigma", "time evolution \n of the standard deviation \n N = " + str(N))
+    #sub2Sigma = figSigma.add_subplot(2, 2, 2)
+    #plotDistEnh(sub2Sigma,h3DisSigma, "time", "sigma","time evolution \n of the standard deviation \n with disorder \n N = " + str(N))
+    plotDist(sub1Sigma, h3Sigma, "time", r"$\sigma$", "time evolution \n of the standard deviation \n for N =" + str(N), "W = 0")
+    sub1Sigma.plot(h3DisSigmaW2[0], h3DisSigmaW2[1], label='W = 2')
+    sub1Sigma.plot(h3DisSigmaW1[0], h3DisSigmaW1[1], label='W = 1')
+    sub1Sigma.legend(loc='upper left')
+
 
 if bProbDistSum:
     h3Sum = calcProbSumList(0, 70, 5, h3Mat)
@@ -443,47 +562,54 @@ if bProbDistSum:
     #plot of the time evolution of the sum of the probability distribution
     figSum = plt.figure()
     sub1Sum = figSum.add_subplot(2, 2, 1)
-    plotDistEnh(sub1Sum,h3Sum, "time", "sum","sum of the probability distribution\n N = " + str(N))
+    plotDistEnh(sub1Sum,h3Sum, "time", r"$\Sigma_{n - m}$ p(n - m)","sum of the probability distribution\n N = " + str(N))
     sub2Sum = figSum.add_subplot(2, 2, 2)
-    plotDistEnh(sub2Sum,h3DisSum, "time", "sum", "sum of the probability distribution \n with disorder \n N = " + str(N) + " W = " + str(W))
+    plotDistEnh(sub2Sum,h3DisSum, "time", r"$\Sigma_{n - m}$ p(n - m)", "sum of the probability distribution \n with disorder \n N = " + str(N) + " W = " + str(W))
+
 
 if bStandDevDisEvo:
-    h3SigmaDisEvo = calcStandDevDisEvo(0,10,0.5,h3Mat,time)
-    h3SigmaDisEvoTime = calcStandDevDisEvo(0,10,0.5,h3Mat,10)
+    h3SigmaDisEvo = calcStandDevDisEvo(0,7,0.5,h3Mat,time, 10)
+    h3SigmaDisEvoTime = calcStandDevDisEvo(0,7,0.5,h3Mat,time, 10)
 
     figSigmaDisEvo = plt.figure()
     sub1SigmaDisEvo = figSigmaDisEvo.add_subplot(2,2,1)
-    plotDistEnh(sub1SigmaDisEvo, h3SigmaDisEvo, "W", "sigma", "disorder evolution \n of the standard deviation \n N = " + str(N) + " time = " + str(time))
+    plotDistEnh(sub1SigmaDisEvo, h3SigmaDisEvo, "W", r"$\sigma$", "disorder evolution \n of the standard deviation \n N = " + str(N) + " time = " + str(time))
     sub2SigmaDisEvo = figSigmaDisEvo.add_subplot(2, 2, 2)
-    plotDistEnh(sub2SigmaDisEvo, h3SigmaDisEvoTime, "W", "sigma", "disorder evolution \n of the standard deviation \n N = " + str(N) + " time = " + str(10))
+    plotDistEnh(sub2SigmaDisEvo, h3SigmaDisEvoTime, "W", r"$\sigma$", "disorder evolution \n of the standard deviation \n N = " + str(N) + " time = " + str(time))
+    sub2SigmaDisEvo.set_xscale('log')
+    sub2SigmaDisEvo.set_yscale('log')
+
 
 if bLocalLenDisEvo:
-    h3LocalLenDisEvo = calcLocalLenDisEvo(0,100,5,h3Mat)
+    h3LocalLenDisEvo = calcLocalLenDisEvo(0,4,0.05,h3Mat,10)
 
     figLocalLenDisEvo = plt.figure()
     sub1LocalLenDisEvo = figLocalLenDisEvo.add_subplot(2, 2, 1)
-    plotDistEnh(sub1LocalLenDisEvo, h3LocalLenDisEvo, "W", "localization length", "disorder evolution \n of the localization length \n N = " + str(N))
+    plotDistEnh(sub1LocalLenDisEvo, h3LocalLenDisEvo, "W", r"$\zeta_{loc}$", "disorder evolution \n of the localization length \n N = " + str(N))
 
     h3VarianceList = []
-    h3LogList = []
     for i in range(len(h3LocalLenDisEvo[1])):
         varianceValue = h3LocalLenDisEvo[1][i]**2
         h3VarianceList.append(varianceValue)
-        logValue = math.log(h3LocalLenDisEvo[1][i])
-        h3LogList.append(logValue)
 
     h3VarianceDisEvo = []
     h3VarianceDisEvo.append(h3LocalLenDisEvo[0])
     h3VarianceDisEvo.append(h3VarianceList)
-    h3LogDisEvo = []
-    h3LogDisEvo.append(h3LocalLenDisEvo[0])
-    h3LogDisEvo.append(h3LogList)
 
     sub2LocalLenDisEvo = figLocalLenDisEvo.add_subplot(2, 2, 2)
-    plotDistEnh(sub2LocalLenDisEvo, h3VarianceDisEvo, "W", "variance", "disorder evolution \n of the variance \n N = " + str(N))
+    plotDistEnh(sub2LocalLenDisEvo, h3VarianceDisEvo, "W", r"$\zeta_{loc}^2$", "disorder evolution \n of the variance \n N = " + str(N))
+
+    #fitParams, pcov = scipy.optimize.curve_fit(powerLaw, h3LocalLenDisEvo[0], h3LocalLenDisEvo[1])
+    #yFit = powerLaw(h3LocalLenDisEvo[0], fitParams[0], fitParams[1], fitParams[2])
+    #print(fitParams)
+    #print(yFit)
 
     sub3LocalLenDisEvo = figLocalLenDisEvo.add_subplot(2, 2, 3)
-    plotDistEnh(sub3LocalLenDisEvo, h3LogDisEvo, "W", "log(localization length", "disorder evolution \n of the natural logarithm \n of the localization length")
+    plotDistEnh(sub3LocalLenDisEvo, h3LocalLenDisEvo, "W", r"$\log(\zeta_{loc})$", "natural logarithm \n of the localization length")
+    #sub3LocalLenDisEvo.plot(h3LocalLenDisEvo[0], yFit)
+    sub3LocalLenDisEvo.set_yscale('log')
+    sub3LocalLenDisEvo.set_xscale('log')
+
 
 if bEigStateDist:
     h3DisEigStates = calcEigenstates(h3DisMat)
@@ -502,12 +628,14 @@ if bEigStateDist:
     sub4EigStateDist.set_yscale('log')
     plotDistEnh(sub4EigStateDist, h3DisEigVec2Dist, "n", "|phi(n)|^2", "log of the above")
 
+
 if bVarianceDisEvo:
-    h3VarianceDisEvo = calcVarianceDisEvo(0, 3, 0.5, h3Mat)
+    h3VariancePlotList = calcVarianceDisEvo(0, 3, 0.1, h3Mat, 100)
 
     figVarianceDisEvo = plt.figure()
     sub1VarianceDisEvo = figVarianceDisEvo.add_subplot(2, 2, 1)
-    plotDistEnh(sub1VarianceDisEvo, h3VarianceDisEvo, "W", "time limes variance","disorder evolution \n of the time limes variance \n N = " + str(N))
+    #sub1VarianceDisEvo.set_yscale('log')
+    plotDistEnh(sub1VarianceDisEvo, h3VariancePlotList, "W", r"$\zeta_{loc}^2$","disorder evolution \n of the time limes variance \n N = " + str(N))
 
 
 plt.show()
