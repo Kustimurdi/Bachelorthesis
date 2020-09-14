@@ -25,8 +25,9 @@ bStandDevSizeEvo = False
 bProbDistSum = False
 bStandDevDisEvo = False
 bLocalLenDisEvo = False
-bEigStateDist = True
+bEigStateDist = False
 bVarianceDisEvo = False
+bEigStateAverage = True
 
 def calcH3MatOpenBound(N):
     '''creates h3 for a given amount of positions "N"'''
@@ -550,16 +551,16 @@ def calcEigPeakAverage(N, W, numberCalc, index, halfWidth):
     indexEigenvector = returnEigVec(eigenstates, index)
     eigenvaluesList.append(eigenstates[0][index])
     indexEigvecDist = calcEigVecDist(indexEigenvector)
-    peakSum = np.asarray(returnPeakValues(indexEigvecDist[1], halfWidth)
+    peakSum = returnPeakValues(indexEigvecDist, halfWidth)[1]
 
-    for i in range(numberCalc):
+    for i in range(numberCalc - 1):
         h3Dis = calcDisorder(N + 1, W)
         matrix = h3 + h3Dis
         eigenstates = np.linalg.eigh(matrix)
         indexEigenvector = returnEigVec(eigenstates, index)
         eigenvaluesList.append(eigenstates[0][index])
         indexEigvecDist = calcEigVecDist(indexEigenvector)
-        peakSum += np.asarray(returnPeakValues(indexEigvecDist[1], halfWidth))
+        peakSum += returnPeakValues(indexEigvecDist, halfWidth)[1]
 
     peakSum = peakSum * (1/numberCalc)
     result = []
@@ -747,20 +748,13 @@ if bEigStateDist:
     h3DisEigStates2 = calcEigenstates(h3DisMat)
     h3DisEigVec1Dist = calcEigVecDist(h3DisEigStates[1][:,0])
     h3DisEigVec2Dist = calcEigVecDist(h3DisEigStates2[1][:,0])
-    #print(h3DisEigVec1Dist[0])
-    #print(h3DisEigVec1Dist[1])
-    peakValues = returnPeakValues(h3DisEigVec1Dist, 20)
-    #print(peakValues[0])
-    #print(peakValues[1])
-    fitParams, pcov = scipy.optimize.curve_fit(expFkt, peakValues[0], peakValues[1])
-    print(fitParams)
-    h3DisEigStatesFit_yValues = expFkt(np.asarray(peakValues[0]), *fitParams)
-    #print(h3DisEigStatesFit_yValues)
-    print(len(peakValues[0]))
-    print(len(h3DisEigStatesFit_yValues))
 
-    peakAverage = calcEigPeakAverage(N, W, 5, 0, 20)
-    xList = list(range(len(peakAverage[1])))
+    #peakValues = returnPeakValues(h3DisEigVec1Dist, 20)
+    #fitParams, pcov = scipy.optimize.curve_fit(expFkt, peakValues[0], peakValues[1])
+    #h3DisEigStatesFit_yValues = expFkt(np.asarray(peakValues[0]), *fitParams)
+
+    #peakAverage = calcEigPeakAverage(N, W, 5, 0, 20)
+    #xList = list(range(len(peakAverage[1])))
 
     figEigStateDist = plt.figure()
     sub1EigStateDist = figEigStateDist.add_subplot(221)
@@ -773,12 +767,12 @@ if bEigStateDist:
     sub4EigStateDist = figEigStateDist.add_subplot(224)
     sub4EigStateDist.set_yscale('log')
     plotDistEnh(sub4EigStateDist, h3DisEigVec2Dist, "n", "|phi(n)|^2", "log of the above")
-    peakFig = plt.figure()
-    plt.plot(peakValues[0], peakValues[1])
-    plt.yscale('log')
+    #peakFig = plt.figure()
+    #plt.plot(peakValues[0], peakValues[1])
+    #plt.yscale('log')
     #fitFig = plt.figure()
-    plt.scatter(peakValues[0], h3DisEigStatesFit_yValues)
-    plt.scatter(xList, peakAverage[1])
+    #plt.scatter(peakValues[0], h3DisEigStatesFit_yValues)
+    #plt.scatter(xList, peakAverage[1])
 
 
 if bVarianceDisEvo:
@@ -788,6 +782,21 @@ if bVarianceDisEvo:
     sub1VarianceDisEvo = figVarianceDisEvo.add_subplot(2, 2, 1)
     #sub1VarianceDisEvo.set_yscale('log')
     plotDistEnh(sub1VarianceDisEvo, h3VariancePlotList, "W", r"$\zeta_{loc}^2$","disorder evolution \n of the time limes variance \n N = " + str(N))
+
+
+if bEigStateAverage:
+    peakAverage = calcEigPeakAverage(N, W, 100, 0, 20)
+    xList = list(range(len(peakAverage[1])))
+    tuple = []
+    tuple.append(xList)
+    tuple.append(peakAverage)
+    peakFig = plt.figure()
+    sub1Average = peakFig.add_subplot(221)
+    sub1Average.plot(xList, peakAverage[1])
+    sub2Average = peakFig.add_subplot(222)
+    sub2Average.set_yscale('log')
+    sub2Average.plot(xList, peakAverage[1])
+
 
 
 plt.show()
